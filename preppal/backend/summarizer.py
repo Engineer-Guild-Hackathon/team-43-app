@@ -3,7 +3,7 @@
 import os
 import google.generativeai as genai
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "ここに自分のAPIキーを入力")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyDAUO5T3sHD9YbtidgEOFdqlJ5wC1QfSX8")
 gemini = None
 if GEMINI_API_KEY:
     try:
@@ -131,3 +131,4 @@ def make_weighted_summary(transcript: str, highlights: List[Dict], gemini=None) 
             picks.append(s)
     head = (picks[0][:20] + "…") if picks else "要約"
     return head + "\n- " + "\n- ".join(picks[:6])
+
