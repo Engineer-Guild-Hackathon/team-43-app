@@ -17,50 +17,57 @@ main.py — FastAPI：フロント配信 + API
 """
 
 from __future__ import annotations
+
 import os
 import tempfile
-from uuid import uuid4
 from datetime import datetime, timedelta
 from typing import Optional
+from uuid import uuid4
 
-from fastapi import (
-    FastAPI, UploadFile, File, Form, Body, HTTPException
-)
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
-    JSONResponse, HTMLResponse, PlainTextResponse, FileResponse
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
+
+from .reminders import start as start_reminders
+from .storage import add_record
+from .storage import add_reminder as storage_add_reminder
+from .storage import get_record, list_records_light
+from .storage import update_title as storage_update_title
 
 # 自作モジュール
 from .stt import transcribe_file
-from .summarizer import summarize, make_weighted_summary
-from .storage import (
-    add_record, get_record, list_records_light, update_title as storage_update_title,
-    add_reminder as storage_add_reminder
-)
-from .reminders import start as start_reminders
+from .summarizer import make_weighted_summary, summarize
 from .tts import synthesize_to_file
-
 
 # ===== FastAPI アプリ準備 =====
 app = FastAPI(title="PrepPal — STT + Summary")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ===== 静的ファイル配信（/ と /assets）=====
 FRONT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 ASSETS_DIR = os.path.join(FRONT_DIR, "assets")
 
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     """トップページ（録音UI＋一覧＋詳細＋編集＋リマインド）"""
     return FileResponse(os.path.join(FRONT_DIR, "index.html"))
 
+
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
 
 @app.get("/favicon.ico")
 def favicon():
@@ -99,7 +106,9 @@ async def transcribe_and_summarize(
         }
         add_record(rec)
 
-        return JSONResponse({"id": rec["id"], "transcript": transcript, "summary": summary})
+        return JSONResponse(
+            {"id": rec["id"], "transcript": transcript, "summary": summary}
+        )
     finally:
         try:
             os.remove(tmp_path)
@@ -126,7 +135,9 @@ def get_recording(rid: str):
 def update_title(rid: str, title: str = Form(...)):
     """録音タイトルを更新"""
     if not title.strip():
-        return JSONResponse({"ok": False, "error": "空のタイトルは設定できません"}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "空のタイトルは設定できません"}, status_code=400
+        )
     ok = storage_update_title(rid, title.strip())
     if ok:
         return {"ok": True}
@@ -152,20 +163,24 @@ def add_reminder(
         due = now + timedelta(seconds=30)
     else:
         if not goal_date:
-            return JSONResponse({"error": "goal_date が必要です（例: 2025-09-20）"}, status_code=400)
+            return JSONResponse(
+                {"error": "goal_date が必要です（例: 2025-09-20）"}, status_code=400
+            )
         goal = datetime.fromisoformat(goal_date)
         days = max((goal - now).days, 1)
         ratio = 0.20 if days <= 30 else 0.10
         due = now + timedelta(days=max(int(days * ratio), 1))
 
-    storage_add_reminder({
-        "id": str(uuid4()),
-        "email": email,
-        "due_at": due,
-        "title": title,
-        "recording_id": recording_id,
-        "sent": False,
-    })
+    storage_add_reminder(
+        {
+            "id": str(uuid4()),
+            "email": email,
+            "due_at": due,
+            "title": title,
+            "recording_id": recording_id,
+            "sent": False,
+        }
+    )
     return {"next_review_at": due.isoformat(), "will_email": bool(email)}
 
 
@@ -215,11 +230,14 @@ def tts_summary(rid: str, field: str = "summary"):
         raise HTTPException(status_code=400, detail="nothing to read")
 
     mp3_path = synthesize_to_file(text)  # 一時ファイルパス
-    return FileResponse(mp3_path, media_type="audio/mpeg", filename=f"{rid}-{target_field}.mp3")
+    return FileResponse(
+        mp3_path, media_type="audio/mpeg", filename=f"{rid}-{target_field}.mp3"
+    )
 
 
 # ===== 直接起動用 =====
 if __name__ == "__main__":
     import uvicorn
+
     # Windows向けに reload=False
     uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)

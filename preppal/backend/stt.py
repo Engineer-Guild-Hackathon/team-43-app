@@ -17,10 +17,13 @@ WHISPER_PREC = os.getenv("WHISPER_PREC", "int8")
 
 # 日本語コメント：モデルをあらかじめロードしておく（毎回ロードは重い）
 if USE_FASTER:
-    whisper_model = WhisperModel(WHISPER_MODEL_SIZE, device=WHISPER_DEVICE, compute_type=WHISPER_PREC)
+    whisper_model = WhisperModel(
+        WHISPER_MODEL_SIZE, device=WHISPER_DEVICE, compute_type=WHISPER_PREC
+    )
 else:
     size = "base" if WHISPER_MODEL_SIZE == "small" else WHISPER_MODEL_SIZE
     whisper_model = openai_whisper.load_model(size)
+
 
 def transcribe_file(path: str, language: str | None = None) -> str:
     """日本語：音声ファイルパスを受け取り、テキストにして返す"""
