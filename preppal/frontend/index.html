@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>PrepPal – Your personal classroom companion</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- アプリのスタイル（/assets は FastAPI の StaticFiles で配信） -->
+  <link rel="stylesheet" href="/assets/style.css" />
+
+  <!-- 任意：ファビコン（置いていないなら削除可） -->
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+
+  <!-- 追加（任意）：ゴーストボタンの見た目（style.cssに同等があれば不要） -->
+  <style>
+    .btn.ghost { background: transparent; border: 1px solid var(--line); }
+    .btn.ghost:hover { background: var(--bg-muted, #f6f8fa); }
+  </style>
+</head>
+<body>
+  <!-- ヘッダー -->
+  <header class="container row top">
+    <div class="row brand">
+      <div class="logo">▣</div>
+      <div>
+        <div class="h1">PrepPal</div>
+        <div class="muted sub">Your personal classroom companion</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+
+    <!-- テーマ切替（ライト/ダーク） -->
+    <button id="themeToggle" class="icon-btn" title="テーマ切替（ライト/ダーク）" aria-label="テーマ切替">
+      🌗
+    </button>
+
+    <span class="badge beta">Beta</span>
+    <div class="chip">test</div>
+  </header>
+
+  <!-- タブ（UnderlineNav風） -->
+  <nav class="container">
+    <div class="tabs" role="tablist" aria-label="sections">
+      <!-- data-target は下の #view-* と一致させること -->
+      <div class="tab" role="tab" aria-selected="true"  data-target="view-record">Record</div>
+      <div class="tab" role="tab" aria-selected="false" data-target="view-notes">Notes</div>
+      <div class="tab" role="tab" aria-selected="false" data-target="view-timeline">Timeline</div>
+      <div class="tab" role="tab" aria-selected="false" data-target="view-study">Study</div>
+    </div>
+  </nav>
+
+  <!-- メイン（1つだけ） -->
+  <main class="container">
+
+    <!-- ▼ Record ビュー（録音・一覧・詳細・再要約・TTS・リマインド・グラレコ） -->
+    <section id="view-record" class="view active" aria-labelledby="tab-record">
+      <!-- 録音カード -->
+      <section class="card">
+        <div class="card-title">Lecture Recording</div>
+        <div class="muted mb">Record your lecture and PrepPal will transcribe it automatically</div>
+
+        <div id="recArea" class="rec-area">
+          <!-- マイクの丸いボタン（JSで開始/停止をトグル） -->
+          <button id="btnMic" class="mic-button" aria-pressed="false" aria-label="録音開始/停止">
+            <div id="micWrap" class="mic-wrap" aria-hidden="true">
+              <div class="mic-ring"></div>
+              <div class="mic-ring2"></div>
+              <svg class="mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 1.75a3.25 3.25 0 0 1 3.25 3.25v6a3.25 3.25 0 1 1-6.5 0v-6A3.25 3.25 0 0 1 12 1.75Z"/>
+                <path d="M19 11v1a7 7 0 0 1-14 0v-1"/>
+                <path d="M12 19v3"/>
+              </svg>
+            </div>
+          </button>
+
+          <div id="status" class="muted mt" aria-live="polite">Idle</div>
+        </div>
+      </section>
+
+      <!-- Recent & 詳細 -->
+      <section class="card">
+        <div class="card-title">Recent Recordings</div>
+        <div class="muted mb">Your latest lecture recordings</div>
+
+        <!-- 一覧（クリックで詳細を開く/閉じる） -->
+        <div id="list" class="list" aria-live="polite"></div>
+
+        <!-- 詳細パネル（JSで .active を付与して表示/非表示） -->
+        <div id="detail" class="detail" aria-hidden="true">
+          <h3 class="detail-title">Details</h3>
+
+          <!-- タイトル編集 -->
+          <div class="card small">
+            <div class="row" style="justify-content:space-between; align-items:center">
+              <strong>Title</strong>
+              <div class="row" style="gap:6px">
+                <input id="editTitle" type="text" class="input" placeholder="タイトルを入力" />
+                <button id="btnSaveTitle" class="btn btn-primary">Save</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 文字起こし -->
+          <div class="card small">
+            <strong>Transcription</strong>
+            <pre id="tx"></pre>
+          </div>
+
+          <!-- 要約 -->
+          <div class="card small">
+            <strong>Summary</strong>
+            <pre id="sum"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- 重要センテンス入力 → 再要約 -->
+      <section class="card" style="padding:12px; margin-top:12px">
+        <div style="font-weight:650; margin-bottom:6px">重要センテンス入力（改行で複数行OK）</div>
+        <textarea id="hlInput" rows="4" placeholder="例）&#10;勾配爆発を防ぐためにクリッピングを導入&#10;評価はF1スコアで再計算する" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:8px;"></textarea>
+
+        <!-- ボタン群（左：再要約／右：TTSコントロール） -->
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <!-- 入力から再要約 -->
+          <label>重み <input id="hlWeight" type="number" value="2.0" step="0.1" min="1" style="width:80px; margin-left:4px"></label>
+          <button id="btnReSummInput" class="btn" style="background:#d97706; color:white">入力から再要約</button>
+
+          <!-- ▼▼▼ TTSコントロール（右寄せ） ▼▼▼ -->
+          <div class="tts-controls row" id="ttsControls" style="gap:8px; align-items:center; margin-left:auto;">
+            <!-- 再生/停止トグル（1ボタンで両方） -->
+            <button id="ttsToggleBtn" class="btn" type="button" aria-pressed="false">▶ 読み上げ</button>
+            <!-- 先頭から再生 -->
+            <button id="ttsRestartBtn" class="btn ghost" type="button" title="先頭から再生">⏮ 先頭から</button>
+            <!-- 音量（任意） -->
+            <label class="muted" for="ttsVolume" style="margin-left:8px;">音量</label>
+            <input id="ttsVolume" type="range" min="0" max="1" step="0.01" value="1" style="width:120px;">
+            <!-- 実体のAudio（非表示にしてJSから操作） -->
+            <audio id="ttsPlayer" preload="none" hidden></audio>
+          </div>
+          <!-- ▲▲▲ TTSコントロール ▲▲▲ -->
+        </div>
+      </section>
+
+      <!-- Reminder -->
+      <section class="card">
+        <div class="card-title">Reminder</div>
+        <div class="muted mb">Demo(30s) or schedule by exam date</div>
+        <div class="row wrap">
+          <input id="email" type="email" placeholder="メール（任意）" class="input">
+          <input id="goal" type="date" class="input">
+          <button id="demo" class="btn dark">30秒デモ</button>
+          <button id="schedule" class="btn slate">試験日ベースで登録</button>
+        </div>
+        <div id="next" class="muted mt">次回復習: -</div>
+      </section>
+
+      <!-- Graphic Recording（要約から図解を自動生成） -->
+      <section class="card">
+        <div class="card-title">Graphic Recording (beta)</div>
+        <div class="muted mb">要約をもとに、文字が読みにくい方にも伝わる図版（PNG）を生成します</div>
+
+        <div class="row wrap" style="gap:8px">
+          <button id="btnGenGraphic" class="btn btn-primary">🖼 図版を生成</button>
+          <button id="btnSaveGraphic" class="btn slate" disabled>⬇ PNGとして保存</button>
+          <!-- 必要であれば SVG 保存ボタンも： <button id="btnSaveGraphicSvg" class="btn" disabled>⬇ SVGで保存</button> -->
+          <select id="gTheme" class="input" style="min-width:160px">
+            <option value="light">テーマ: ライト</option>
+            <option value="dark">テーマ: ダーク</option>
+            <option value="high">テーマ: ハイコントラスト</option>
+          </select>
+        </div>
+
+        <!-- キャンバスを画面内に収めるためのラッパ（JSが #gRecoWrap を参照して調整） -->
+        <div id="gRecoWrap" class="mt" style="overflow:hidden">
+          <canvas id="gReco" width="1600" height="1200"
+                  style="border:1px solid var(--line); border-radius:8px; background:#fff"></canvas>
+        </div>
+
+        <!-- 視覚に頼らない方向け：図の内容をテキストでも出す（SRやコピペ用） -->
+        <details class="mt">
+          <summary>図の説明テキスト（アクセシビリティ用）</summary>
+          <pre id="gRecoAlt" style="white-space:pre-wrap"></pre>
+        </details>
+      </section>
+    </section>
+
+    <!-- ▼ Notes ビュー（要約をノートとして保存・一覧/検索/削除） -->
+    <section id="view-notes" class="view" hidden aria-labelledby="tab-notes">
+  <div class="grid notes-grid">
+    <!-- エディタ -->
+    <div class="card">
+      <div class="card-title">Editor</div>
+
+      <div class="row wrap" style="gap:8px; margin-bottom:8px">
+        <button id="btnNoteNew" class="btn">新規</button>
+        <button id="btnNoteSave" class="btn btn-primary">保存（Ctrl/Cmd+S）</button>
+        <button id="btnNoteDelete" class="btn btn-danger">削除</button>
+        <select id="noteHistory" class="input" style="min-width:220px">
+          <option value="">履歴を選択して復元…</option>
+        </select>
+        <button id="btnNoteRestore" class="btn">復元</button>
+      </div>
+
+      <div id="noteMeta" class="muted mb">新規ノート</div>
+
+      <input id="noteTitle" class="input" placeholder="タイトル" />
+
+      <!-- ツールバー -->
+      <div class="editor-toolbar" role="toolbar" aria-label="Note formatting">
+        <button data-cmd="h1" title="見出し1">H1</button>
+        <button data-cmd="h2" title="見出し2">H2</button>
+        <button data-cmd="h3" title="見出し3">H3</button>
+        <span class="sep"></span>
+        <button data-cmd="bold" title="太字 (Ctrl/Cmd+B)"><b>B</b></button>
+        <button data-cmd="italic" title="斜体 (Ctrl/Cmd+I)"><i>I</i></button>
+        <button data-cmd="code" title="インラインコード">{"</>"}</button>
+        <span class="sep"></span>
+        <button data-cmd="ul" title="箇条書き">• List</button>
+        <button data-cmd="ol" title="番号">1.</button>
+        <button data-cmd="todo" title="チェックボックス">[ ]</button>
+        <button data-cmd="quote" title="引用">&ldquo; &rdquo;</button>
+        <span class="sep"></span>
+        <button data-cmd="link" title="リンク">🔗</button>
+        <button data-cmd="stamp" title="タイムスタンプ">🕒</button>
+        <span class="spacer"></span>
+        <button id="btnTogglePreview" class="btn small">プレビュー切替</button>
+      </div>
+
+      <textarea id="noteBody" class="textarea" placeholder="本文（Markdown対応。例：**太字**、- 箇条書き、> 引用、`code` など）"></textarea>
+      <div id="notePreview" class="note-preview" hidden></div>
+
+      <div class="row wrap mt" style="gap:12px">
+        <label class="muted">タグ:
+          <input id="noteTags" class="input" placeholder="例: python, 機械学習" style="min-width:260px">
+        </label>
+        <label class="muted"><input id="notePinned" type="checkbox"> ピン留め</label>
+        <span id="noteSaved" class="muted">未保存</span>
+      </div>
+    </div>
+
+    <!-- 一覧 -->
+    <div class="card">
+      <div class="card-title">Notes</div>
+      <input id="noteSearch" class="input" placeholder="ノート検索（タイトル/本文/タグ）" />
+      <div id="notesList" class="list" style="margin-top:10px"></div>
+    </div>
+  </div>
+</section>
+
+
+    <!-- ▼ Timeline ビュー（次回復習などの予定を表示） -->
+    <section id="view-timeline" class="view" hidden aria-labelledby="tab-timeline">
+      <div class="card">
+        <div class="card-title">Timeline</div>
+        <div class="muted mb">リマインダーで返ってきた次回復習予定などを可視化します</div>
+        <div id="timelineList" class="list"></div>
+      </div>
+    </section>
+
+    <!-- ▼ Study ビュー（フラッシュカードのクイズ） -->
+    <section id="view-study" class="view" hidden aria-labelledby="tab-study">
+      <div class="card">
+        <div class="card-title">Study</div>
+        <div class="muted mb">要約中の「Q: … / A: …」「質問：/回答：」「設問：/解答：」を抽出してクイズにします</div>
+        <div class="row wrap">
+          <button id="btnBuildCards" class="btn slate">全録音からカードを再構築</button>
+          <button id="btnStartQuiz" class="btn btn-primary">▶ クイズ開始</button>
+        </div>
+
+        <!-- シンプルなカードUI（表→裏） -->
+        <div id="quizBox" class="card small" style="display:none; margin-top:12px">
+          <div id="quizCounter" class="muted"></div>
+          <div id="quizFront" style="font-weight:700; margin-top:6px"></div>
+          <div id="quizBack"  style="margin-top:6px; display:none"></div>
+          <div class="btns row">
+            <button id="btnFlip" class="btn">裏を見る</button>
+            <button id="btnNext" class="btn">次へ</button>
+          </div>
+        </div>
+
+        <div id="studyEmpty" class="muted mt">カードがありません。まずは「全録音からカードを再構築」を押してください。</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- JavaScript（※ 必ず body の最後、defer 付き） -->
+  <script src="/assets/app.js" defer></script>
+
+  <!-- JavaScript無効時のフォールバック -->
+  <noscript>
+    <div class="container card" style="margin-top:16px">
+      JavaScript が無効になっています。PrepPal を利用するには有効にしてください。
+    </div>
+  </noscript>
+</body>
+</html>
