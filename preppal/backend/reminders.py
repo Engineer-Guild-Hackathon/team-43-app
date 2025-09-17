@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 # reminders.py — リマインド送信ループ（30秒間隔）
-import threading, time
+import threading
+import time
 from datetime import datetime
+
 from . import storage
 from .mailer import send_email
 
 _started = False
+
 
 def _loop():
     while True:
@@ -24,10 +27,12 @@ def _loop():
             print("[REMINDER] loop error:", e)
         time.sleep(30)
 
+
 def start():
     """日本語：多重起動を避けつつバックグラウンドスレッド開始"""
     global _started
-    if _started: return
+    if _started:
+        return
     t = threading.Thread(target=_loop, daemon=True)
     t.start()
     _started = True

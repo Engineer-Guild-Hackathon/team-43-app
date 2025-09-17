@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # summarizer.py — Gemini 1.5 Flash で要約（フォールバックあり）
 import os
+
 import google.generativeai as genai
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyDAUO5T3sHD9YbtidgEOFdqlJ5wC1QfSX8")
@@ -61,20 +62,23 @@ def summarize(text: str) -> str:
     # フォールバック（簡易）
     lines = [l for l in text.split("。") if l.strip()]
     head = (lines[0][:20] + "…") if lines else "要約"
-    pts  = "\n- " + "\n- ".join(lines[:3]) if lines else "- （要点なし）"
+    pts = "\n- " + "\n- ".join(lines[:3]) if lines else "- （要点なし）"
     return f"{head}{pts}"
 
 
 # === 追加：重み付き再要約（Geminiがあれば使う / なくても簡易版で動く） ===
-from typing import List, Dict
+from typing import Dict, List
+
 
 def split_sentences_ja(text: str) -> list:
     """簡易：日本語を文っぽく分ける（。！？で区切る）"""
     import re
+
     if not text:
         return []
-    parts = re.split(r'(?<=[。！？])\s*', text.strip())
+    parts = re.split(r"(?<=[。！？])\s*", text.strip())
     return [p for p in parts if p]
+
 
 def make_weighted_summary(transcript: str, highlights: List[Dict], gemini=None) -> str:
     """
@@ -86,7 +90,9 @@ def make_weighted_summary(transcript: str, highlights: List[Dict], gemini=None) 
         return "（本文がありません）"
 
     if gemini:
-        hi_txt = "\n".join([f"- ({h.get('weight',1)}x) {h.get('text','')}" for h in highlights or []])
+        hi_txt = "\n".join(
+            [f"- ({h.get('weight',1)}x) {h.get('text', '')}" for h in highlights or []]
+        )
         prompt = f"""あなたは重要度付きハイライトを反映して要約を再構成する日本語エディタです。
 推測はせず、本文からのみ抽出してください。ハイライトの重み（x値）が大きいほど相対的に強調します。
 出力は**Markdown**で、見出し名と順序を厳守してください。

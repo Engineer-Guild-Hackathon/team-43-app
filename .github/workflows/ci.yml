@@ -1,0 +1,102 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r preppal/backend/requirements.txt
+        pip install -r preppal/backend/requirements-dev.txt
+
+    - name: Run Black (Code Formatting Check)
+      run: |
+        black --check --diff preppal/backend/
+
+    - name: Run isort (Import Sorting Check)
+      run: |
+        isort --check-only --diff preppal/backend/
+
+    - name: Run flake8 (Linting)
+      run: |
+        flake8 preppal/backend/
+
+    - name: Run mypy (Type Checking)
+      run: |
+        mypy preppal/backend/
+
+    - name: Run bandit (Security Linting)
+      run: |
+        bandit -r preppal/backend/ -f json -o bandit-report.json || true
+        bandit -r preppal/backend/
+
+    - name: Run pytest (Unit Tests)
+      run: |
+        pytest preppal/backend/tests/ --cov=preppal/backend --cov-report=xml --cov-report=html
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  auto-format:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: lint-and-format
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+
+    - name: Install formatting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install black isort
+
+    - name: Run Black (Auto-format)
+      run: |
+        black preppal/backend/
+
+    - name: Run isort (Auto-sort imports)
+      run: |
+        isort preppal/backend/
+
+    - name: Commit changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add .
+        git diff --staged --quiet || git commit -m "Auto-format code with Black and isort [skip ci]"
+        git push
