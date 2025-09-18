@@ -11,7 +11,7 @@ from typing import List, Dict
 import google.generativeai as genai
 
 # === Gemini 初期化（環境変数優先／未設定ならフォールバック） ===
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "ここにAPIKey").strip()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyDAUO5T3sHD9YbtidgEOFdqlJ5wC1QfSX8").strip()
 gemini = None
 if GEMINI_API_KEY:
     try:
@@ -127,3 +127,4 @@ ToDo:
     head = f"見出し: {(picks[0][:18] + '…') if picks else '要約'}"
     body = "\n".join(f"・{x}" for x in picks[:6])
     return f"{head}\n要点:\n{body}\nキーワード: \nToDo:\n学習用付録:\n"
+
