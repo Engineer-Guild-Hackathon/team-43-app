@@ -1,0 +1,28 @@
+indent-width = 4
+line-length = 120
+
+target-version = "py38"
+
+[format]
+# Enable reformatting of code snippets in docstrings.
+docstring-code-format = true
+
+[lint.per-file-ignores]
+# Allows unused import in __init__.py
+"__init__.py" = ["E402", "F401"]
+"tests/*" = ["F401"]
+
+[lint]
+unfixable = ["F401"]
+ignore = ["F841"]
+select = [
+    "E",  # pycodestyle
+    "F",  # flake8
+    "I"  # isort
+]
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+]
