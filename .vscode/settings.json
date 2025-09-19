@@ -1,0 +1,7 @@
+{
+    "python.testing.pytestArgs": [
+        "preppal_決勝"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}
