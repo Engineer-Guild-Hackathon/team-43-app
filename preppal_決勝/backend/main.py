@@ -17,29 +17,29 @@ main.py — FastAPI：フロント配信 + API
 """
 
 from __future__ import annotations
+
 import os
+import shutil  # ★ 追加
 import tempfile
-import shutil            # ★ 追加
-from uuid import uuid4
 from datetime import datetime, timedelta
 from typing import Optional
+from uuid import uuid4
 
-from fastapi import FastAPI, UploadFile, File, Form, Body, HTTPException
-from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
+
+from . import rag  # ★ 追加：RAGモジュールを使う
+from .reminders import start as start_reminders
+from .storage import add_record, get_record, list_records_light
+from .storage import add_reminder as storage_add_reminder
+from .storage import update_title as storage_update_title
 
 # 自作モジュール
 from .stt import transcribe_file
-from .summarizer import summarize, make_weighted_summary
-from .storage import (
-    add_record, get_record, list_records_light, update_title as storage_update_title,
-    add_reminder as storage_add_reminder
-)
-from .reminders import start as start_reminders
+from .summarizer import make_weighted_summary, summarize
 from .tts import synthesize_to_file
-from . import rag  # ★ 追加：RAGモジュールを使う
-
 
 # =============================================================================
 # フロントのパス解決（堅牢版）
@@ -61,8 +61,9 @@ if not FRONT_DIR:
 
 ASSETS_DIR = os.path.join(FRONT_DIR, "assets")
 if not os.path.isdir(ASSETS_DIR):
-    raise RuntimeError(f"assets フォルダが見つかりません: {ASSETS_DIR}\n"
-                       "frontend/assets に style.css / app.js を配置してください。")
+    raise RuntimeError(
+        f"assets フォルダが見つかりません: {ASSETS_DIR}\nfrontend/assets に style.css / app.js を配置してください。"
+    )
 
 # =============================================================================
 # 録音ファイルの保存先（元音声を配信用に残す）
@@ -78,13 +79,16 @@ os.makedirs(RECORDINGS_DIR, exist_ok=True)
 app = FastAPI(title="PrepPal — STT + Summary")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ---- 静的ファイル配信（/assets と /） ----
 # 例）http://127.0.0.1:8000/assets/app.js → frontend/assets/app.js
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
 
 @app.get("/", response_class=HTMLResponse)
 def index():
@@ -93,6 +97,7 @@ def index():
     if not os.path.isfile(index_path):
         return PlainTextResponse("frontend/index.html が見つかりません。", status_code=500)
     return FileResponse(index_path)
+
 
 # favicon 無しのときは 204 を返す（ログが気になるなら /assets/favicon.ico を置く）
 @app.get("/favicon.ico")
@@ -126,17 +131,17 @@ async def transcribe_and_summarize(
 
         if isinstance(ret_stt, dict):
             transcript = ret_stt.get("text", "") or ""
-            segments   = ret_stt.get("segments", []) or []
+            segments = ret_stt.get("segments", []) or []
         else:
             # ret_stt が str（テキストのみ）の場合
             transcript = str(ret_stt or "")
-            segments   = []
+            segments = []
 
         # --- RAG（任意） ---
         rag_context = ""
         if use_rag:
             hits = rag.search_similar(transcript, top_k=5)
-            ctx_lines = [f"【{h.get('title','material')}】{h.get('text','')}" for h in hits]
+            ctx_lines = [f"【{h.get('title', 'material')}】{h.get('text', '')}" for h in hits]
             rag_context = "\n\n".join(ctx_lines)[:4000]
 
         # 要約（RAG文脈があれば一緒に渡す）
@@ -161,14 +166,18 @@ async def transcribe_and_summarize(
             "created_at": datetime.utcnow().isoformat(),
             "duration_sec": float(duration_sec) if duration_sec is not None else None,
             "transcript": transcript,
-            "segments": segments,            # 同期ハイライト用
+            "segments": segments,  # 同期ハイライト用
             "summary": summary,
             "audio_path": final_audio_path,  # 元音声のローカルパス
-            "highlights": [],                # 重み付き再要約用に保持
+            "highlights": [],  # 重み付き再要約用に保持
         }
         add_record(rec)
 
         return JSONResponse({"id": rec["id"], "transcript": transcript, "summary": summary})
+    except FileNotFoundError as fe:
+        raise HTTPException(status_code=400, detail=str(fe))
+    except Exception as e:
+        raise HTTPException(status_code=421, detail=str(e))
 
     finally:
         # tmp を move 済みなら None にしているので消さない
@@ -177,7 +186,6 @@ async def transcribe_and_summarize(
                 os.remove(tmp_path)
             except Exception:
                 pass
-
 
 
 @app.get("/api/recordings")
@@ -193,6 +201,7 @@ def get_recording(rid: str):
     if not r:
         return JSONResponse({"error": "not found"}, status_code=404)
     return r
+
 
 @app.get("/api/recordings/{rid}/audio")
 def get_recording_audio(rid: str):
@@ -210,6 +219,7 @@ def get_recording_audio(rid: str):
 async def upload_material(file: UploadFile = File(...), title: Optional[str] = Form(None)):
     """PDF/Word/Excel/TXT を受け取り、抽出→分割→埋め込み→FAISSに追加"""
     import shutil
+
     fname = f"{uuid4()}_{file.filename}"
     tmp = os.path.join(tempfile.gettempdir(), fname)
     final = os.path.join(rag.MATS_DIR, fname)
@@ -263,14 +273,16 @@ def add_reminder(
         ratio = 0.20 if days <= 30 else 0.10
         due = now + timedelta(days=max(int(days * ratio), 1))
 
-    storage_add_reminder({
-        "id": str(uuid4()),
-        "email": email,
-        "due_at": due,
-        "title": title,
-        "recording_id": recording_id,
-        "sent": False,
-    })
+    storage_add_reminder(
+        {
+            "id": str(uuid4()),
+            "email": email,
+            "due_at": due,
+            "title": title,
+            "recording_id": recording_id,
+            "sent": False,
+        }
+    )
     return {"next_review_at": due.isoformat(), "will_email": bool(email)}
 
 
@@ -328,5 +340,6 @@ def tts_summary(rid: str, field: str = "summary"):
 # =============================================================================
 if __name__ == "__main__":
     import uvicorn
+
     # Windows向けに reload=False
     uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
