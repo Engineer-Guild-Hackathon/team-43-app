@@ -174,8 +174,10 @@ async def transcribe_and_summarize(
         add_record(rec)
 
         return JSONResponse({"id": rec["id"], "transcript": transcript, "summary": summary})
+    except FileNotFoundError as fe:
+        raise HTTPException(status_code=400, detail=str(fe))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=421, detail=str(e))
 
     finally:
         # tmp を move 済みなら None にしているので消さない
