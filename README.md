@@ -1,3 +1,5 @@
+![logo](https://github.com/Engineer-Guild-Hackathon/team-43-app/blob/main/GE_logo_trans.png)
+
 ## チーム情報
 - チーム番号: 43
 - チーム名: 4THƎNA
